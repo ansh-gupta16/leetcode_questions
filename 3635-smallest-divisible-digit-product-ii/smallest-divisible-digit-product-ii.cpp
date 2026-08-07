@@ -1,101 +1,140 @@
-class Solution {
-public:
-    int A,B,C,D, dimB,dimC,dimD;
-    vector<int> minDig;
-    int contrib[10][4] = {
-        {0,0,0,0},{0,0,0,0},{1,0,0,0},{0,1,0,0},{2,0,0,0},
-        {0,0,1,0},{1,1,0,0},{0,0,0,1},{3,0,0,0},{0,2,0,0}
-    };
-    inline int idx(int a,int b,int c,int d){ return ((a*dimB+b)*dimC+c)*dimD+d; }
+#include <string>
+#include <vector>
+#include <algorithm>
 
-    vector<int> greedyFill(int a,int b,int c,int d,int L){
-        vector<int> res; res.reserve(L);
-        for(int pos=0; pos<L; pos++){
-            int remAfter = L-pos-1;
-            for(int dig=1; dig<=9; dig++){
-                int na=max(a-contrib[dig][0],0), nb=max(b-contrib[dig][1],0);
-                int nc=max(c-contrib[dig][2],0), nd=max(d-contrib[dig][3],0);
-                if(minDig[idx(na,nb,nc,nd)]<=remAfter){
-                    a=na;b=nb;c=nc;d=nd; res.push_back(dig); break;
-                }
-            }
-        }
-        return res;
+using namespace std;
+
+class Solution {
+    static void get_factors(int d, int &c2, int &c3, int &c5, int &c7) {
+        c2 = c3 = c5 = c7 = 0;
+        if (d == 2) c2 = 1;
+        else if (d == 3) c3 = 1;
+        else if (d == 4) c2 = 2;
+        else if (d == 5) c5 = 1;
+        else if (d == 6) { c2 = 1; c3 = 1; }
+        else if (d == 7) c7 = 1;
+        else if (d == 8) c2 = 3;
+        else if (d == 9) c3 = 2;
     }
 
+public:
     string smallestNumber(string num, long long t) {
-        int a=0,b=0,c=0,d=0; long long tt=t;
-        while(tt%2==0){tt/=2;a++;}
-        while(tt%3==0){tt/=3;b++;}
-        while(tt%5==0){tt/=5;c++;}
-        while(tt%7==0){tt/=7;d++;}
-        if(tt!=1) return "-1";
-
-        A=a;B=b;C=c;D=d; dimB=B+1; dimC=C+1; dimD=D+1;
-        long long sizeL=(long long)(A+1)*(B+1)*(C+1)*(D+1);
-        minDig.assign(sizeL, INT_MAX/2);
-        minDig[idx(0,0,0,0)]=0;
-
-        for(int ai=0; ai<=A; ai++)
-        for(int bi=0; bi<=B; bi++)
-        for(int ci=0; ci<=C; ci++)
-        for(int di=0; di<=D; di++){
-            if(!ai&&!bi&&!ci&&!di) continue;
-            int best=INT_MAX/2;
-            for(int dig=2; dig<=9; dig++){
-                int na=max(ai-contrib[dig][0],0), nb=max(bi-contrib[dig][1],0);
-                int nc=max(ci-contrib[dig][2],0), nd=max(di-contrib[dig][3],0);
-                if(na==ai&&nb==bi&&nc==ci&&nd==di) continue;
-                best=min(best, minDig[idx(na,nb,nc,nd)]+1);
+        // DP table for minimum digits needed to gather powers of 2 and 3
+        static int dp[60][40];
+        static bool initialized = false;
+        if (!initialized) {
+            for (int i = 0; i < 60; ++i) {
+                for (int j = 0; j < 40; ++j) {
+                    dp[i][j] = 1e9; // initialize with infinity equivalent
+                }
             }
-            minDig[idx(ai,bi,ci,di)]=best;
-        }
-
-        int n=num.size();
-
-        if(num.find('0')==string::npos){
-            int ea=0,eb=0,ec=0,ed=0;
-            for(char ch: num){
-                int dig=ch-'0';
-                ea=min(A,ea+contrib[dig][0]); eb=min(B,eb+contrib[dig][1]);
-                ec=min(C,ec+contrib[dig][2]); ed=min(D,ed+contrib[dig][3]);
+            dp[0][0] = 0;
+            int moves[6][2] = {{1,0}, {0,1}, {2,0}, {1,1}, {3,0}, {0,2}}; // prime factors for {2,3,4,6,8,9}
+            
+            for (int r2 = 0; r2 < 60; ++r2) {
+                for (int r3 = 0; r3 < 40; ++r3) {
+                    if (r2 == 0 && r3 == 0) continue;
+                    int res = 1e9;
+                    for (auto& m : moves) {
+                        int f2 = m[0], f3 = m[1];
+                        if (r2 == 0 && f2 > 0 && f3 == 0) continue;
+                        if (r3 == 0 && f3 > 0 && f2 == 0) continue;
+                        
+                        int nr2 = max(0, r2 - f2);
+                        int nr3 = max(0, r3 - f3);
+                        if (nr2 == r2 && nr3 == r3) continue;
+                        
+                        res = min(res, 1 + dp[nr2][nr3]);
+                    }
+                    dp[r2][r3] = res;
+                }
             }
-            if(ea>=A&&eb>=B&&ec>=C&&ed>=D) return num;
+            initialized = true;
         }
 
-        size_t fzPos = num.find('0');
-        int maxI = (fzPos==string::npos) ? n-1 : (int)fzPos;
-
-        vector<array<int,4>> remReq(maxI+1);
-        remReq[0] = {A,B,C,D};
-        for(int i=0;i<maxI;i++){
-            int dig=num[i]-'0'; auto &cur=remReq[i];
-            remReq[i+1] = { max(cur[0]-contrib[dig][0],0), max(cur[1]-contrib[dig][1],0),
-                             max(cur[2]-contrib[dig][2],0), max(cur[3]-contrib[dig][3],0) };
+        // Step 1: Factorize t
+        int req2 = 0, req3 = 0, req5 = 0, req7 = 0;
+        long long temp = t;
+        while (temp % 2 == 0) { req2++; temp /= 2; }
+        while (temp % 3 == 0) { req3++; temp /= 3; }
+        while (temp % 5 == 0) { req5++; temp /= 5; }
+        while (temp % 7 == 0) { req7++; temp /= 7; }
+        
+        // If t has prime factors other than 2, 3, 5, 7, no digit product can ever be divisible by t.
+        if (temp > 1) return "-1";
+        
+        int n = num.length();
+        vector<int> p2(n + 1, 0), p3(n + 1, 0), p5(n + 1, 0), p7(n + 1, 0);
+        int first_zero = n;
+        
+        // Accumulate prefix factors for num up to the first '0'
+        for (int i = 0; i < n; ++i) {
+            if (num[i] == '0') {
+                first_zero = i;
+                break;
+            }
+            int c2, c3, c5, c7;
+            get_factors(num[i] - '0', c2, c3, c5, c7);
+            p2[i + 1] = p2[i] + c2;
+            p3[i + 1] = p3[i] + c3;
+            p5[i + 1] = p5[i] + c5;
+            p7[i + 1] = p7[i] + c7;
         }
-
-        string answer="";
-        for(int i=maxI;i>=0&& answer.empty();i--){
-            auto &req_i=remReq[i];
-            int dnum=num[i]-'0', remLen=n-i-1;
-            for(int cdig=dnum+1; cdig<=9; cdig++){
-                int na=max(req_i[0]-contrib[cdig][0],0), nb=max(req_i[1]-contrib[cdig][1],0);
-                int nc=max(req_i[2]-contrib[cdig][2],0), nd=max(req_i[3]-contrib[cdig][3],0);
-                if(minDig[idx(na,nb,nc,nd)]<=remLen){
-                    vector<int> suf=greedyFill(na,nb,nc,nd,remLen);
-                    string s=num.substr(0,i)+char('0'+cdig);
-                    for(int x:suf) s+=char('0'+x);
-                    answer=s; break;
+        
+        // Step 2: Check if `num` is already fully valid
+        if (first_zero == n && p2[n] >= req2 && p3[n] >= req3 && p5[n] >= req5 && p7[n] >= req7) {
+            return num;
+        }
+        
+        // Helper lambda to construct the smallest valid suffix
+        auto build = [&](string pref_str, int curr2, int curr3, int curr5, int curr7, int total_len) -> string {
+            string ans = pref_str;
+            ans.reserve(total_len);
+            int rem_len = total_len - ans.length();
+            
+            for (int i = 0; i < rem_len; ++i) {
+                for (int c = 1; c <= 9; ++c) {
+                    int fc2, fc3, fc5, fc7;
+                    get_factors(c, fc2, fc3, fc5, fc7);
+                    
+                    int r2 = max(0, req2 - curr2 - fc2);
+                    int r3 = max(0, req3 - curr3 - fc3);
+                    int r5 = max(0, req5 - curr5 - fc5);
+                    int r7 = max(0, req7 - curr7 - fc7);
+                    
+                    if (r5 + r7 + dp[r2][r3] <= (rem_len - 1 - i)) {
+                        ans += (char)('0' + c);
+                        curr2 += fc2; curr3 += fc3; curr5 += fc5; curr7 += fc7;
+                        break;
+                    }
+                }
+            }
+            return ans;
+        };
+        
+        // Step 3: Find optimal divergence point retaining maximum prefix
+        for (int i = min(n - 1, first_zero); i >= 0; --i) {
+            int start_d = num[i] - '0' + 1;
+            for (int d = start_d; d <= 9; ++d) {
+                int f2, f3, f5, f7;
+                get_factors(d, f2, f3, f5, f7);
+                
+                int r2 = max(0, req2 - p2[i] - f2);
+                int r3 = max(0, req3 - p3[i] - f3);
+                int r5 = max(0, req5 - p5[i] - f5);
+                int r7 = max(0, req7 - p7[i] - f7);
+                
+                // If the required digits to fulfill factors fits into the rest of the string
+                if (r5 + r7 + dp[r2][r3] <= n - 1 - i) {
+                    return build(num.substr(0, i) + to_string(d), p2[i] + f2, p3[i] + f3, p5[i] + f5, p7[i] + f7, n);
                 }
             }
         }
-        if(!answer.empty()) return answer;
-
-        int M=minDig[idx(A,B,C,D)];
-        int L0=max(n+1, M);
-        vector<int> suf=greedyFill(A,B,C,D,L0);
-        string s;
-        for(int x:suf) s+=char('0'+x);
-        return s;
+        
+        // Step 4: No same-length substitution works, extend length 
+        int min_required_len = req5 + req7 + dp[req2][req3];
+        int m = max(n + 1, min_required_len);
+        
+        return build("", 0, 0, 0, 0, m);
     }
 };
