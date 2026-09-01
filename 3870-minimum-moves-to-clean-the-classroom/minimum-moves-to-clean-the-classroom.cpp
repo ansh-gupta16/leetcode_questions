@@ -1,84 +1,95 @@
 class Solution {
 public:
     int minMoves(vector<string>& classroom, int energy) {
-         int m = classroom.size();
+        int m = classroom.size();
         int n = classroom[0].size();
+        int mn = m * n;
+
+        // Flatten grid for faster access
+        vector<char> grid(mn);
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++)
+                grid[i * n + j] = classroom[i][j];
 
         int sr = -1, sc = -1;
-        vector<pair<int,int>> litterCells;
-        unordered_map<int,int> litterIndex; // r*n+c -> bit index
+        vector<int> litBit(mn, -1);
+        int L = 0;
 
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                char ch = classroom[i][j];
-                if (ch == 'S') {
-                    sr = i; sc = j;
-                } else if (ch == 'L') {
-                    litterIndex[i * n + j] = litterCells.size();
-                    litterCells.push_back({i, j});
-                }
+        for (int idx = 0; idx < mn; idx++) {
+            char ch = grid[idx];
+            if (ch == 'S') {
+                sr = idx / n; sc = idx % n;
+            } else if (ch == 'L') {
+                litBit[idx] = L++;
             }
         }
 
-        int L = litterCells.size();
         int fullMask = (L == 0) ? 0 : ((1 << L) - 1);
+        if (fullMask == 0) return 0;
 
-        if (fullMask == 0) return 0; // no litter to collect
-
-        // visited[r][c][e][mask]
-        // dims: m * n * (energy+1) * (1<<L)
         int maskCount = 1 << L;
-        vector<vector<vector<vector<bool>>>> visited(
-            m, vector<vector<vector<bool>>>(
-                n, vector<vector<bool>>(
-                    energy + 1, vector<bool>(maskCount, false)
-                )
-            )
-        );
+        int eCount = energy + 1;
 
-        struct State {
-            int r, c, e, mask, moves;
+        // Flat index: ((r*n+c) * eCount + e) * maskCount + mask
+        long long totalStates = (long long)mn * eCount * maskCount;
+        vector<bool> visited(totalStates, false);
+
+        auto encode = [&](int r, int c, int e, int mask) -> int {
+            return ((r * n + c) * eCount + e) * maskCount + mask;
         };
 
-        queue<State> q;
-        int startMask = 0; // S cell is never L per constraints
-        visited[sr][sc][energy][startMask] = true;
-        q.push({sr, sc, energy, startMask, 0});
+        // Array-based BFS queue: store state code and moves in parallel arrays
+        vector<int> queueState(totalStates);
+        vector<int> queueMoves(totalStates);
+        int head = 0, tail = 0;
 
-        int dr[4] = {-1, 1, 0, 0};
-        int dc[4] = {0, 0, -1, 1};
+        int startCode = encode(sr, sc, energy, 0);
+        visited[startCode] = true;
+        queueState[tail] = startCode;
+        queueMoves[tail] = 0;
+        tail++;
 
-        while (!q.empty()) {
-            State cur = q.front();
-            q.pop();
+        static const int dr[4] = {-1, 1, 0, 0};
+        static const int dc[4] = {0, 0, -1, 1};
 
-            if (cur.mask == fullMask) {
-                return cur.moves;
+        while (head < tail) {
+            int code = queueState[head];
+            int moves = queueMoves[head];
+            head++;
+
+            int mask = code % maskCount;
+            int tmp = code / maskCount;
+            int e = tmp % eCount;
+            int rc = tmp / eCount;
+            int r = rc / n;
+            int c = rc % n;
+
+            if (mask == fullMask) {
+                return moves;
             }
 
-            if (cur.e == 0) {
-                continue; // no energy left, can't move further (and not on goal)
-            }
+            if (e == 0) continue;
 
             for (int d = 0; d < 4; d++) {
-                int nr = cur.r + dr[d];
-                int nc = cur.c + dc[d];
+                int nr = r + dr[d];
+                int nc = c + dc[d];
                 if (nr < 0 || nr >= m || nc < 0 || nc >= n) continue;
-                char ch = classroom[nr][nc];
+
+                int nIdx = nr * n + nc;
+                char ch = grid[nIdx];
                 if (ch == 'X') continue;
 
-                int newE = (ch == 'R') ? energy : (cur.e - 1);
-                int newMask = cur.mask;
-                if (ch == 'L') {
-                    auto it = litterIndex.find(nr * n + nc);
-                    if (it != litterIndex.end()) {
-                        newMask |= (1 << it->second);
-                    }
-                }
+                int newE = (ch == 'R') ? energy : (e - 1);
+                int newMask = mask;
+                int bit = litBit[nIdx];
+                if (bit >= 0) newMask |= (1 << bit);
 
-                if (!visited[nr][nc][newE][newMask]) {
-                    visited[nr][nc][newE][newMask] = true;
-                    q.push({nr, nc, newE, newMask, cur.moves + 1});
+                int ncode = encode(nr, nc, newE, newMask);
+                if (!visited[ncode]) {
+                    visited[ncode] = true;
+                    queueState[tail] = ncode;
+                    queueMoves[tail] = moves + 1;
+                    tail++;
                 }
             }
         }
